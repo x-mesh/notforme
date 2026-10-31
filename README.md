@@ -4,7 +4,7 @@ A Chrome extension that collapses or hides articles on a news list page: adverti
 
 [한국어](README.ko.md)
 
-![NotForMe collapses a matched advertising PR article on ZDNet Korea and shows its debug scores](assets/zdnet-collapse-demo.gif)
+![NotForMe collapses a matched advertising PR article on ZDNet Korea and shows its debug scores](assets/zdnet-pr-filter-debug-demo.gif)
 
 This GIF shows NotForMe on a public ZDNet Korea news list. It collapses a matched advertising PR article and shows the classification scores in debug mode.
 

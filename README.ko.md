@@ -4,7 +4,7 @@
 
 [English](README.md)
 
-![ZDNet Korea에서 광고성 PR 기사를 접고 디버그 판정값을 보여주는 NotForMe 실행 화면](assets/zdnet-collapse-demo.gif)
+![ZDNet Korea에서 광고성 PR 기사를 접고 디버그 판정값을 보여주는 NotForMe 실행 화면](assets/zdnet-pr-filter-debug-demo.gif)
 
 공개된 ZDNet Korea 뉴스 목록에서 촬영한 실제 동작 GIF입니다. 광고성 PR 기사가 접히고 디버그 모드에서 판정값을 보여줍니다.
 

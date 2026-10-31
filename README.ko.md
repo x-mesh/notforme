@@ -4,9 +4,9 @@
 
 [English](README.md)
 
-![ZDNet Korea에서 광고성 기사를 접은 NotForMe 실행 화면](assets/zdnet-collapse-example.png)
+![ZDNet Korea에서 가려진 기사를 보기로 펼친 뒤 다시 접는 NotForMe 실행 화면](assets/zdnet-collapse-demo.gif)
 
-공개된 ZDNet Korea 뉴스 목록에서 촬영한 실제 동작 화면입니다. 광고성 기사를 접으면 NotForMe가 추가하는 한 줄 표시를 보여줍니다.
+공개된 ZDNet Korea 뉴스 목록에서 촬영한 실제 동작 GIF입니다. 가려진 기사를 보기로 펼친 뒤 다시 접는 모습을 보여줍니다.
 
 ## 기능
 

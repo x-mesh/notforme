@@ -4,7 +4,9 @@ A Chrome extension that collapses or hides articles on a news list page: adverti
 
 [한국어](README.ko.md)
 
-![NotForMe filters promotional articles in a fictional news list](assets/readme-filtered-news.svg)
+![NotForMe in collapse mode on a ZDNet Korea style news list](assets/readme-filtered-news.svg)
+
+The preview follows the supported ZDNet Korea layout. It shows the compact bars that NotForMe adds when it collapses promotional articles.
 
 ## What it does
 

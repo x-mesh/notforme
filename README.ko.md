@@ -4,9 +4,9 @@
 
 [English](README.md)
 
-![ZDNet Korea 형식의 뉴스 목록에서 광고성 기사를 접은 NotForMe 실행 화면](assets/readme-filtered-news.svg)
+![ZDNet Korea에서 광고성 기사를 접은 NotForMe 실행 화면](assets/zdnet-collapse-example.png)
 
-지원하는 ZDNet Korea 화면 구성을 기준으로 만든 미리보기입니다. 광고성 기사를 접으면 NotForMe가 추가하는 한 줄 표시를 보여줍니다.
+공개된 ZDNet Korea 뉴스 목록에서 촬영한 실제 동작 화면입니다. 광고성 기사를 접으면 NotForMe가 추가하는 한 줄 표시를 보여줍니다.
 
 ## 기능
 

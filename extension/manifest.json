@@ -24,7 +24,18 @@
         "https://www.hani.co.kr/arti/",
         "https://www.khan.co.kr/newest/articles*",
         "https://www.hankyung.com/all-news*",
-        "https://www.donga.com/news/List*"
+        "https://www.donga.com/news/List*",
+        "https://www.edaily.co.kr/",
+        "https://www.etnews.com/",
+        "https://www.bloter.net/",
+        "https://www.digitaltoday.co.kr/",
+        "https://www.techm.kr/",
+        "https://www.boannews.com/",
+        "https://www.dailysecu.com/",
+        "https://www.aitimes.com/",
+        "https://www.ddaily.co.kr/",
+        "https://www.venturesquare.net/",
+        "https://platum.kr/"
       ],
       "js": [
         "src/adapters.js",

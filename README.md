@@ -30,8 +30,19 @@ Supported pages:
 - Kyunghyang Shinmun: https://www.khan.co.kr/newest/articles
 - Korea Economic Daily: https://www.hankyung.com/all-news
 - Dong-A Ilbo: https://www.donga.com/news/List
+- EDaily: https://www.edaily.co.kr/
+- Electronic Times: https://www.etnews.com/
+- Bloter: https://www.bloter.net/
+- Digital Today: https://www.digitaltoday.co.kr/
+- TechM: https://www.techm.kr/
+- Boan News: https://www.boannews.com/
+- Dailysecu: https://www.dailysecu.com/
+- AI Times: https://www.aitimes.com/
+- Digital Daily: https://www.ddaily.co.kr/
+- VentureSquare: https://www.venturesquare.net/
+- Platum: https://platum.kr/
 
-The five additional adapters support latest article lists only. They exclude home pages, search, category pages, and separate mobile sites.
+The Yonhap, Hankyoreh, Kyunghyang Shinmun, Korea Economic Daily, and Dong-A Ilbo adapters support latest article lists only. They exclude home pages, search, category pages, and separate mobile sites. The EDaily and ten IT news adapters support homepage article links.
 
 On other HTTPS sites, select **이 사이트에서 사용** in the popup. Grant access to that site. The extension also runs on later visits.
 

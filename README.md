@@ -4,6 +4,8 @@ A Chrome extension that collapses or hides articles on a news list page: adverti
 
 [한국어](README.ko.md)
 
+![NotForMe filters promotional articles in a fictional news list](assets/readme-filtered-news.svg)
+
 ## What it does
 
 Each filter is a checkbox in the toolbar popup.

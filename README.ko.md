@@ -4,6 +4,8 @@
 
 [English](README.md)
 
+![가상의 뉴스 목록에서 광고성 기사를 접은 NotForMe 실행 화면](assets/readme-filtered-news.svg)
+
 ## 기능
 
 툴바 팝업의 체크박스로 각 필터를 켜고 끕니다.

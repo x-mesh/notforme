@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>NotForMe</title>
+  <style>
+    body { width: 320px; margin: 0; padding: 14px; font: 13px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif; color: #1f2430; }
+    h1 { margin: 0 0 10px; font-size: 15px; }
+    label.row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .sub { margin: 0 0 0 24px; color: #6a7080; font-size: 12px; }
+    fieldset { margin: 10px 0 0; padding: 8px 10px; border: 1px solid #dde0e6; border-radius: 6px; }
+    legend { padding: 0 4px; color: #6a7080; font-size: 12px; }
+    textarea, input[type="text"], input[type="password"] { width: 100%; box-sizing: border-box; padding: 5px 6px; border: 1px solid #c9ced8; border-radius: 4px; font: inherit; }
+    textarea { height: 52px; resize: vertical; }
+    .inline { display: flex; align-items: center; gap: 10px; }
+    #status { margin-top: 10px; padding: 6px 8px; border-radius: 4px; background: #f4f5f7; font-size: 12px; }
+    #status.bad { background: #fdecec; color: #8a1c1c; }
+    button { margin-top: 6px; padding: 3px 8px; font: inherit; cursor: pointer; }
+    input[type="range"] { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>NotForMe</h1>
+
+  <label class="row"><input type="checkbox" id="enabled"> 필터 사용</label>
+  <label class="row"><input type="checkbox" id="hideAd"> 광고성 PR 기사 없애기</label>
+  <p class="sub">할인·행사·팝업·개점·협업 한정판 등 마케팅 목적의 기사</p>
+  <label class="row"><input type="checkbox" id="hideProduct"> 제품 공개 기사 없애기</label>
+  <p class="sub">제품·서비스·모델·기능 출시/공개를 알리는 기사</p>
+  <label class="row"><input type="checkbox" id="hideOffTopic"> 주제만 남기기</label>
+  <label for="topics">남길 주제</label>
+  <textarea id="topics" placeholder="예: 자동차, 보안"></textarea>
+  <p class="sub">다른 주제는 가려요.</p>
+  <label class="row"><input type="checkbox" id="hideExcludedTopic"> 주제 제외</label>
+  <label for="excludedTopics">제외할 주제</label>
+  <textarea id="excludedTopics" placeholder="예: 전기차, 게임"></textarea>
+  <p class="sub">쉼표로 구분해요. 겹치면 제외해요.</p>
+
+  <fieldset>
+    <legend>표시 방식</legend>
+    <label class="row"><input type="radio" name="mode" value="collapse"> 한 줄로 접기 (클릭해서 펼치기)</label>
+    <label class="row"><input type="radio" name="mode" value="blur"> 블러 (보기 버튼으로 해제)</label>
+    <label class="row"><input type="radio" name="mode" value="dim"> 흐리게 표시</label>
+    <label class="row"><input type="radio" name="mode" value="remove"> 완전히 숨기기</label>
+    <div class="inline">
+      <span>판정 기준</span>
+      <input type="range" id="threshold" min="0.5" max="0.99" step="0.01">
+      <span id="thresholdValue"></span>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Jev 연결 설정</legend>
+    <label for="apiKey">API 키</label>
+    <input type="password" id="apiKey" autocomplete="off">
+    <p>키는 이 브라우저에만 저장됩니다. 암호화된 보관소는 아닙니다.</p>
+    <label for="endpoint">API 주소 (HTTPS)</label>
+    <input type="text" id="endpoint">
+    <label for="model">모델</label>
+    <input type="text" id="model">
+    <button id="saveConnection">연결 설정 저장</button>
+    <button id="testConnection">연결 테스트 (API 호출)</button>
+    <button id="clearCache">캐시 비우기</button>
+  </fieldset>
+
+  <label class="row"><input type="checkbox" id="debug"> 디버깅 모드</label>
+  <p class="sub">기사 아래에 판정 확률과 미판정 사유를 표시합니다. 숨긴 기사는 접어서 표시합니다.</p>
+
+  <button id="enableSite">이 사이트에서 사용</button>
+  <p class="sub">공통 추출기 · 제목이 있는 기사 카드만 처리해요.</p>
+
+  <div id="status" role="status" aria-live="polite">설정을 불러오는 중...</div>
+  <script src="popup.js"></script>
+</body>
+</html>

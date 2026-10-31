@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "NotForMe",
+  "version": "0.1.0",
+  "description": "뉴스 목록에서 광고성 PR 기사, 제품 공개 기사, 관심 없는 주제의 기사를 접거나 숨깁니다.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://api.typesafe.ai/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://zdnet.co.kr/*",
+        "https://*.zdnet.co.kr/*",
+        "https://www.yna.co.kr/news*",
+        "https://www.hani.co.kr/arti",
+        "https://www.hani.co.kr/arti/",
+        "https://www.khan.co.kr/newest/articles*",
+        "https://www.hankyung.com/all-news*",
+        "https://www.donga.com/news/List*"
+      ],
+      "js": [
+        "src/adapters.js",
+        "src/content.js"
+      ],
+      "css": [
+        "src/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "NotForMe",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "minimum_chrome_version": "102",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/icon-32.png"
+      ],
+      "matches": [
+        "https://*/*"
+      ]
+    }
+  ]
+}

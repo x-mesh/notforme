@@ -1,0 +1,16 @@
+{
+  "name": "notforme",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Chrome extension that filters news list articles for personal reading.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/background.test.mjs && node test/content.test.mjs && node test/adapters.test.mjs && node test/common-adapter.test.mjs",
+    "check": "node --check extension/src/background.js && node --check extension/src/content.js && node --check extension/src/popup.js && node --check relay/server.mjs",
+    "package": "bash scripts/package.sh",
+    "package:check": "node test/package.test.mjs"
+  }
+}

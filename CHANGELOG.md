@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0] - 2026-11-01
+
+### Added
+
+- Add selectable debug card layouts, article detection preview, manual article selection, and saved article settings.
+- Add per-article reclassification, failed request retry, settings backup and restore, and a toolbar count of hidden articles.
+
+### Changed
+
+- Extend common extraction to section pages on supported sites and improve classification status and filter explanations.
+- Keep article controls in an overlay and preserve the surrounding spacing of collapsed articles.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added

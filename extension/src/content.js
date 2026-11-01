@@ -6,6 +6,7 @@
 
   const DEFAULTS = {
     debug: false,
+    debugStyle: "lens",
   enabled: true,
     hideAd: true,
     hideProduct: false,
@@ -46,6 +47,7 @@
   let running = false;
   let rerun = false;
   let lastError = "";
+  let lastBadgeCount = null;
 
   const loadSettings = async () => {
     const stored = await chrome.storage.sync.get(DEFAULTS);
@@ -132,6 +134,19 @@
     return false;
   };
 
+  const queueVisible = () => {
+    const height = globalThis.innerHeight;
+    const width = globalThis.innerWidth;
+    if (!(height > 0 && width > 0)) return;
+    for (const [id, row] of rows) {
+      if (!needsRemote(id)) continue;
+      if (row.els.some((el) => {
+        const rect = el.getBoundingClientRect?.();
+        return rect && rect.width > 0 && rect.height > 0 && rect.bottom >= -height && rect.top <= height * 2 && rect.right >= 0 && rect.left <= width;
+      })) queue(id);
+    }
+  };
+
   const missing = () => {
     const out = [];
     for (const [id, row] of rows) {
@@ -152,9 +167,11 @@
   };
 
   const classifyRemote = async (items) => {
+    let succeeded = true;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       const batch = items.slice(i, i + BATCH_SIZE);
       for (const it of batch) tried.add(it.id);
+      apply();
       let res;
       try {
         res = await chrome.runtime.sendMessage({
@@ -172,8 +189,9 @@
           errors.set(item.id, lastError);
           unobserveRow(item.id, rows.get(item.id));
         }
+        succeeded = false;
         apply();
-        return false;
+        continue;
       }
       lastError = "";
       for (const item of batch) {
@@ -187,7 +205,7 @@
       }
       apply();
     }
-    return true;
+    return succeeded;
   };
 
   const reasonFor = (id, d) => {
@@ -278,6 +296,7 @@
     if (!settings.enabled) lines.push("필터 사용 꺼짐 → 표시 유지");
     else if (!anyFilterOn()) lines.push("선택한 필터 없음 → 표시 유지");
     else if (errors.has(id)) lines.push(`미판정: ${errors.get(id)}${decision ? " · 이전 판정 유지" : " → 표시 유지"}`);
+    else if (!decision && settings.userOverrides?.[rows.get(id)?.url]) lines.push(settings.userOverrides[rows.get(id).url] === "keep" ? "사용자 설정: 유지 · 판정 생략" : "사용자 설정: 항상 가리기 · 판정 생략");
     else if (!decision) lines.push(tried.has(id) ? "판정 중" : "미판정: 요청 대기");
     else lines.push(reason ? `판정: ${TAGS[reason]} → 가리기${settings.mode === "remove" ? " (디버깅 중에는 접어서 표시)" : ""}` : settings.userOverrides?.[rows.get(id)?.url] === "keep" ? "사용자 설정: 유지" : "표시 유지 (활성 필터 기준 미달)");
     lines.splice(0, 2, `${lines[0]} · ${lines[1]}`);
@@ -304,6 +323,7 @@
     const wasOpen = node.querySelector(".nf-debug-details")?.open || false;
     node.textContent = "";
     node.dataset.nfText = text;
+    node.dataset.nfStyle = settings.debugStyle === "strip" ? "strip" : "lens";
     const header = make("div", "nf-debug-header");
     const brand = make("div", "nf-debug-brand");
     const icon = make("img", "nf-debug-icon");
@@ -312,7 +332,7 @@
     icon.width = 24;
     icon.height = 24;
     brand.append(icon, make("span", "nf-debug-name", "NotForMe 디버그"));
-    const result = !settings.enabled || !anyFilterOn() ? "필터 꺼짐" : errors.has(id) ? "요청 실패" : !decision ? "미판정" : reason ? TAGS[reason] : "표시 유지";
+    const result = !settings.enabled || !anyFilterOn() ? "필터 꺼짐" : errors.has(id) ? "요청 실패" : !decision && settings.userOverrides?.[rows.get(id)?.url] ? (reason ? TAGS[reason] : "사용자 설정: 유지") : !decision ? (tried.has(id) ? "판정 중" : "요청 대기") : reason ? TAGS[reason] : "표시 유지";
     const badge = make("span", reason ? "nf-debug-result nf-debug-result-hidden" : "nf-debug-result", result);
     header.append(brand, badge);
     const metrics = make("div", "nf-debug-metrics");
@@ -337,8 +357,10 @@
   };
 
   const apply = () => {
+    let hidden = 0;
     for (const [id, row] of rows) {
       const reason = anyFilterOn() ? reasonFor(id, decisions.get(id)) : null;
+      if (reason) hidden += 1;
       for (const el of row.els) {
         if (reason) hide(el, reason, row.title);
         else if (el.dataset.nfReason) restore(el);
@@ -351,7 +373,7 @@
             renderDebug(node, id, decisions.get(id), reason, text);
             el.append(node);
             debugPanels.set(el, node);
-          } else if (panel.dataset.nfText !== text) {
+          } else if (panel.dataset.nfText !== text || panel.dataset.nfStyle !== (settings.debugStyle === "strip" ? "strip" : "lens")) {
             renderDebug(panel, id, decisions.get(id), reason, text);
           }
           el.classList.add("nf-debugging");
@@ -361,6 +383,14 @@
           el.classList.remove("nf-debugging");
         }
         renderOverrideControls(el, row);
+      }
+    }
+    if (hidden !== lastBadgeCount) {
+      lastBadgeCount = hidden;
+      try {
+        const message = chrome.runtime.sendMessage({ type: "badge", hidden, badge: true });
+        message?.catch(() => {});
+      } catch {
       }
     }
   };
@@ -375,6 +405,7 @@
       collect();
       if (anyFilterOn()) {
         if (!hasIntersectionObserver) for (const item of missing()) queue(item.id);
+        else queueVisible();
         const todo = queuedItems();
         if (todo.length) {
           apply();
@@ -405,7 +436,7 @@
 
   chrome.storage.onChanged.addListener(async (_changes, area) => {
     if (area !== "sync") return;
-    if (Object.keys(_changes).some((key) => !["debug", "mode", "threshold"].includes(key))) {
+    if (Object.keys(_changes).some((key) => !["debug", "debugStyle", "mode", "threshold"].includes(key))) {
       tried.clear();
       errors.clear();
     }
@@ -437,6 +468,8 @@
     }, { root: null, rootMargin: "100% 0px", threshold: 0 });
   }
 
+  globalThis.addEventListener?.("scroll", schedule, { passive: true });
+  globalThis.addEventListener?.("resize", schedule, { passive: true });
   new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
 
   loadSettings().then(run);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NotForMe",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "뉴스 목록에서 광고성 PR 기사, 제품 공개 기사, 관심 없는 주제의 기사를 접거나 숨깁니다.",
   "permissions": [
     "storage",

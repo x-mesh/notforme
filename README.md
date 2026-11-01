@@ -1,6 +1,8 @@
 # NotForMe
 
-A Chrome extension that collapses or hides articles on a news list page: advertising PR, product announcements, and anything outside the topics you care about. It only changes how the page is displayed in your own browser.
+I wanted to hide promotional articles and topics I did not want to see while reading the news. NotForMe is a Chrome extension built for that purpose: it collapses or hides unwanted articles in news lists, changing only what appears in your own browser.
+
+It uses [Jev](https://typesafe.ai/) to quickly classify headlines and summaries with structured decisions and probabilities. Classifications can be wrong, so you can adjust the threshold and set per-article exceptions.
 
 [한국어](README.ko.md)
 
@@ -70,6 +72,14 @@ The local store holds the API key, endpoint, and model. Content scripts cannot a
 The local store is not an encrypted secret vault. Filter preferences, per-article overrides, and manually selected article URLs use `chrome.storage.sync`.
 
 Articles use the selected probability threshold (default 0.8). Cache keys include the article, topics, endpoint, model, and definition version.
+
+## Get a Jev API key
+
+1. Sign in to the [TypeSafe console API keys page](https://console.typesafe.ai/keys).
+2. Create an API key in the console. See the [Jev quick start](https://docs.typesafe.ai/introduction/quickstart) for details.
+3. Enter the key under **Jev 연결 설정 → API 키** in the extension popup and save it.
+
+API calls may be subject to the provider’s terms and pricing. Do not share the key or commit it to a repository.
 
 ## Install
 

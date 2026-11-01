@@ -1,5 +1,36 @@
 // Site adapters. Each adapter finds article rows and extracts a compact record.
 // Add a new site by pushing another object to NF_ADAPTERS and adding its match pattern to manifest.json.
+const nfArticleLinks = (candidate, source) => {
+  const links = [...(candidate.querySelectorAll?.("a[href]") || [])];
+  if (source && !links.includes(source)) links.push(source);
+  if (candidate.getAttribute?.("href") && !links.includes(candidate)) links.push(candidate);
+  return links;
+};
+
+const nfResolveVisualTarget = (source, { selectors, articleUrl, articleId }) => {
+  for (const selector of selectors) {
+    let candidate = source.closest?.(selector);
+    while (candidate) {
+      const ids = new Set();
+      for (const link of nfArticleLinks(candidate, source)) {
+        const href = link.getAttribute?.("href");
+        if (!href) continue;
+        let url;
+        try {
+          url = new URL(href, location.href);
+        } catch {
+          continue;
+        }
+        if (!articleUrl(url)) continue;
+        ids.add(articleId(url));
+      }
+      if (ids.size === 1) return candidate;
+      candidate = candidate.parentElement?.closest?.(selector);
+    }
+  }
+  return source;
+};
+
 const nfListAdapter = ({ name, host, path, itemSelector, linkSelector, titleSelector, summarySelector, articlePattern }) => ({
   name,
   match: (hostname) => hostname === host && path.test(location.pathname),
@@ -16,11 +47,13 @@ const nfListAdapter = ({ name, host, path, itemSelector, linkSelector, titleSele
       id: `${name}:${url.pathname}`,
       title: title.slice(0, 140),
       summary: clean(el.querySelector(summarySelector)?.textContent).slice(0, 200),
+      url: url.href,
+      visualTarget: el,
     };
   },
 });
 
-const nfAnchorAdapter = ({ name, host, itemSelector, articlePattern, titleSelector = "h1, h2, h3, h4, strong, .v2-sp__title, .tptn_title", summarySelector }) => ({
+const nfAnchorAdapter = ({ name, host, itemSelector, articlePattern, titleSelector = "h1, h2, h3, h4, strong, .v2-sp__title, .tptn_title", summarySelector, cardSelectors = [] }) => ({
   name,
   match: (hostname) => hostname === host && location.pathname === "/",
   itemSelector,
@@ -34,46 +67,108 @@ const nfAnchorAdapter = ({ name, host, itemSelector, articlePattern, titleSelect
     const clean = (text) => (text || "").replace(/\s+/g, " ").trim();
     const title = clean(el.querySelector(titleSelector)?.textContent || el.textContent);
     if (title.length < 8) return null;
+    const id = name + ":" + canonical.pathname + canonical.search;
     return {
-      id: name + ":" + canonical.pathname + canonical.search,
+      id,
       title: title.slice(0, 140),
       summary: clean(el.querySelector(summarySelector)?.textContent).slice(0, 200),
+      url: canonical.href,
+      visualTarget: nfResolveVisualTarget(el, {
+        selectors: cardSelectors,
+        articleUrl: (candidateUrl) => candidateUrl.hostname === host && articlePattern.test((() => {
+          const normalized = new URL(candidateUrl);
+          normalized.searchParams.delete("source");
+          return normalized.pathname + normalized.search;
+        })()),
+        articleId: (candidateUrl) => {
+          const normalized = new URL(candidateUrl);
+          normalized.searchParams.delete("source");
+          return name + ":" + normalized.pathname + normalized.search;
+        },
+      }),
+    };
+  },
+});
+
+const nfHomeAnchorAdapter = ({ name, host, itemSelector, articlePattern, titleSelector = "h1, h2, h3, h4, h5, strong, span", cardSelectors = [] }) => ({
+  name,
+  match: (hostname) => hostname === host && location.pathname === "/",
+  itemSelector,
+  extract(el) {
+    const href = el.getAttribute("href");
+    if (!href) return null;
+    const url = new URL(href, location.href);
+    if (url.hostname !== host || !articlePattern.test(url.pathname)) return null;
+    const clean = (text) => (text || "").replace(/\s+/g, " ").trim();
+    const title = clean(el.querySelector(titleSelector)?.textContent || el.textContent);
+    if (title.length < 8) return null;
+    const id = name + ":" + url.pathname;
+    return {
+      id,
+      title: title.slice(0, 140),
+      summary: "",
+      url: url.href,
+      visualTarget: nfResolveVisualTarget(el, {
+        selectors: cardSelectors,
+        articleUrl: (candidateUrl) => candidateUrl.hostname === host && articlePattern.test(candidateUrl.pathname),
+        articleId: (candidateUrl) => name + ":" + candidateUrl.pathname,
+      }),
     };
   },
 });
 
 const NF_ADAPTERS = [
+  nfHomeAnchorAdapter({
+    name: "yonhap", host: "www.yna.co.kr", itemSelector: "a.tit-news",
+    articlePattern: /^\/view\/AKR[0-9]+$/, cardSelectors: [".news-con", ".tit-wrap"],
+  }),
+  nfHomeAnchorAdapter({
+    name: "hani", host: "www.hani.co.kr", itemSelector: 'a[href*="/arti/"]',
+    articlePattern: /^\/arti\/.+\/[0-9]+\.html$/,
+  }),
+  nfHomeAnchorAdapter({
+    name: "khan", host: "www.khan.co.kr", itemSelector: 'a[href*="/article/"]',
+    articlePattern: /^\/article\/[0-9]+$/, cardSelectors: ["article"],
+  }),
+  nfHomeAnchorAdapter({
+    name: "hankyung", host: "www.hankyung.com", itemSelector: 'a[href*="/article/"]',
+    articlePattern: /^\/article\/[0-9]+[a-z]?$/, cardSelectors: [".news-item"],
+  }),
+  nfHomeAnchorAdapter({
+    name: "donga", host: "www.donga.com", itemSelector: 'a[href*="/news/"][href*="/article/all/"]',
+    articlePattern: /^\/news\/[^/]+\/article\/all\/[0-9]+\/[0-9]+\/[0-9]+\/?$/, cardSelectors: [".news_card", "li"],
+  }),
   nfAnchorAdapter({
     name: "etnews", host: "www.etnews.com", itemSelector: 'a[href^="/20"]',
-    articlePattern: /^\/[0-9]{14}$/,
+    articlePattern: /^\/[0-9]{14}$/, cardSelectors: ["li"],
   }),
   nfAnchorAdapter({
     name: "bloter", host: "www.bloter.net", itemSelector: 'a[href^="/news/articleView.html?idxno="]',
-    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums",
+    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums", cardSelectors: [".item"],
   }),
   nfAnchorAdapter({
     name: "digitaltoday", host: "www.digitaltoday.co.kr", itemSelector: 'a[href^="/news/articleView.html?idxno="]',
-    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums",
+    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums", cardSelectors: [".item"],
   }),
   nfAnchorAdapter({
     name: "techm", host: "www.techm.kr", itemSelector: 'a[href^="/news/articleView.html?idxno="]',
-    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums",
+    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums", cardSelectors: [".item"],
   }),
   nfAnchorAdapter({
     name: "boannews", host: "www.boannews.com", itemSelector: 'a[href*="/news/articleView.html?idxno="]',
-    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums",
+    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums", cardSelectors: [".item"],
   }),
   nfAnchorAdapter({
     name: "dailysecu", host: "www.dailysecu.com", itemSelector: 'a[href*="/news/articleView.html?idxno="]',
-    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums",
+    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums", cardSelectors: [".item"],
   }),
   nfAnchorAdapter({
     name: "aitimes", host: "www.aitimes.com", itemSelector: 'a[href*="/news/articleView.html?idxno="]',
-    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums",
+    articlePattern: /^\/news\/articleView\.html\?idxno=[0-9]+$/, summarySelector: ".auto-sums", cardSelectors: [".item"],
   }),
   nfAnchorAdapter({
     name: "ddaily", host: "www.ddaily.co.kr", itemSelector: 'a[href^="/page/view/"]',
-    articlePattern: /^\/page\/view\/[0-9]{19}$/,
+    articlePattern: /^\/page\/view\/[0-9]{19}$/, cardSelectors: ["li"],
   }),
   nfAnchorAdapter({
     name: "venturesquare", host: "www.venturesquare.net", itemSelector: 'a[href^="https://www.venturesquare.net/"]',
@@ -81,7 +176,7 @@ const NF_ADAPTERS = [
   }),
   nfAnchorAdapter({
     name: "platum", host: "platum.kr", itemSelector: 'a[href^="https://platum.kr/archives/"]',
-    articlePattern: /^\/archives\/[0-9]+$/,
+    articlePattern: /^\/archives\/[0-9]+$/, cardSelectors: ['[class*="hover-box-shadow"]'],
   }),
   nfListAdapter({
     name: "hankyung", host: "www.hankyung.com", path: /^\/all-news\/?$/,
@@ -120,7 +215,18 @@ const NF_ADAPTERS = [
       if (url.hostname !== "www.edaily.co.kr" || url.pathname !== "/News/Read" || !/^\d+$/.test(url.searchParams.get("newsId") || "") || !/^\d+$/.test(url.searchParams.get("mediaCodeNo") || "")) return null;
       const title = (el.querySelector("p.title_md, p.title_sm")?.textContent || "").replace(/\s+/g, " ").trim();
       if (!title) return null;
-      return { id: `edaily:${url.searchParams.get("newsId")}`, title: title.slice(0, 140), summary: "" };
+      const id = `edaily:${url.searchParams.get("newsId")}`;
+      return {
+        id,
+        title: title.slice(0, 140),
+        summary: "",
+        url: url.href,
+        visualTarget: nfResolveVisualTarget(el, {
+          selectors: ["a.newsbox_md", "a.newsbox_sm"],
+          articleUrl: (candidateUrl) => candidateUrl.hostname === "www.edaily.co.kr" && candidateUrl.pathname === "/News/Read" && /^\d+$/.test(candidateUrl.searchParams.get("newsId") || ""),
+          articleId: (candidateUrl) => `edaily:${candidateUrl.searchParams.get("newsId")}`,
+        }),
+      };
     },
   },
   {
@@ -144,7 +250,7 @@ const NF_ADAPTERS = [
         const byline = clean(el.querySelector(".byline")?.textContent);
         summary = clean(el.textContent).replace(title, "").replace(byline, "").trim();
       }
-      return { id, title: title.slice(0, 140), summary: summary.slice(0, 200) };
+      return { id, title: title.slice(0, 140), summary: summary.slice(0, 200), url: url.href, visualTarget: el };
     },
   },
 ];
@@ -176,6 +282,8 @@ const NF_COMMON_ADAPTER = {
       id: `common:${url.href}`,
       title: title.slice(0, 140),
       summary: clean(el.querySelector("p:not(.byline)")?.textContent).slice(0, 200),
+      url: url.href,
+      visualTarget: el,
     };
   },
 };

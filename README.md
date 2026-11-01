@@ -25,11 +25,11 @@ Publisher tags such as `[광고]` and `[PR]` use local rules without an API call
 Supported pages:
 
 - ZDNet Korea: home, category lists, search.
-- Yonhap: https://www.yna.co.kr/news
-- Hankyoreh: https://www.hani.co.kr/arti
-- Kyunghyang Shinmun: https://www.khan.co.kr/newest/articles
-- Korea Economic Daily: https://www.hankyung.com/all-news
-- Dong-A Ilbo: https://www.donga.com/news/List
+- Yonhap: home, https://www.yna.co.kr/news
+- Hankyoreh: home, https://www.hani.co.kr/arti
+- Kyunghyang Shinmun: home, https://www.khan.co.kr/newest/articles
+- Korea Economic Daily: home, https://www.hankyung.com/all-news
+- Dong-A Ilbo: home, https://www.donga.com/news/List
 - EDaily: https://www.edaily.co.kr/
 - Electronic Times: https://www.etnews.com/
 - Bloter: https://www.bloter.net/
@@ -42,7 +42,7 @@ Supported pages:
 - VentureSquare: https://www.venturesquare.net/
 - Platum: https://platum.kr/
 
-The Yonhap, Hankyoreh, Kyunghyang Shinmun, Korea Economic Daily, and Dong-A Ilbo adapters support latest article lists only. They exclude home pages, search, category pages, and separate mobile sites. The EDaily and ten IT news adapters support homepage article links.
+The Yonhap, Hankyoreh, Kyunghyang Shinmun, Korea Economic Daily, Dong-A Ilbo, EDaily, and ten IT news adapters support homepage article links. The first five also support latest article lists. Search, category pages, and separate mobile sites are excluded.
 
 On other HTTPS sites, select **이 사이트에서 사용** in the popup. Grant access to that site. The extension also runs on later visits.
 

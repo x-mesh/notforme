@@ -7,6 +7,7 @@ let listener;
 let calls = 0;
 let status = 200;
 let access;
+let lastBody;
 const chrome = {
   permissions: { contains: async () => true },
   storage: { local: {
@@ -25,6 +26,7 @@ vm.runInNewContext(readFileSync(new URL("../extension/src/background.js", import
     assert.equal(init.headers.Authorization, "Bearer test-key");
     assert.equal(init.redirect, "error");
     const body = JSON.parse(init.body);
+    lastBody = body;
     assert.equal(body.model, local.model);
     const answers = Object.fromEntries(Object.keys(body.questions).map((key) => [key, { probabilities: (key.endsWith("__topic") || key.endsWith("__excludedTopic")) ? { on_topic: 0.9 } : { ad_pr: 0.9 } }]));
     return { ok: status === 200, status, json: async () => ({ answers }) };
@@ -53,6 +55,17 @@ assert.equal((await ask(exclusionRequest)).results.t1.source, "cache");
 assert.equal(calls, previousCalls);
 await ask({ ...exclusionRequest, excludedTopics: ["게임"] });
 assert.equal(calls, previousCalls + 1, "excluded topics must partition the cache");
+const hateRequest = { ...request, topics: ["혐오"], excludedTopics: ["혐오"] };
+const hateResult = await ask(hateRequest);
+assert.ok(hateResult.results.t1.topic);
+assert.ok(hateResult.results.t1.excludedTopic);
+assert.match(lastBody.questions.t1__topic.criteria.on_topic, /혐오/);
+assert.match(lastBody.questions.t1__excludedTopic.criteria.on_topic, /혐오/);
+const hateCalls = calls;
+assert.equal((await ask(hateRequest)).results.t1.source, "cache");
+assert.equal(calls, hateCalls, "Unicode topics must use their own cache entry");
+await ask({ ...request, topics: ["차별"], excludedTopics: ["혐오"] });
+assert.equal(calls, hateCalls + 1, "a different Unicode keep topic must partition the cache");
 status = 401;
 assert.equal((await ask({ type: "health" })).error, "Jev API HTTP 401");
 assert.equal((await ask({ type: "clearCache" })).ok, true);

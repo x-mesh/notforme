@@ -23,11 +23,11 @@
 지원 화면:
 
 - ZDNet Korea: 홈, 카테고리, 검색
-- 연합뉴스: https://www.yna.co.kr/news
-- 한겨레: https://www.hani.co.kr/arti
-- 경향신문: https://www.khan.co.kr/newest/articles
-- 한국경제: https://www.hankyung.com/all-news
-- 동아일보: https://www.donga.com/news/List
+- 연합뉴스: 홈, https://www.yna.co.kr/news
+- 한겨레: 홈, https://www.hani.co.kr/arti
+- 경향신문: 홈, https://www.khan.co.kr/newest/articles
+- 한국경제: 홈, https://www.hankyung.com/all-news
+- 동아일보: 홈, https://www.donga.com/news/List
 - 이데일리: https://www.edaily.co.kr/
 - 전자신문: https://www.etnews.com/
 - 블로터: https://www.bloter.net/
@@ -40,7 +40,7 @@
 - 벤처스퀘어: https://www.venturesquare.net/
 - 플래텀: https://platum.kr/
 
-연합뉴스, 한겨레, 경향신문, 한국경제, 동아일보는 최신 기사 목록만 지원합니다. 홈, 검색, 카테고리와 모바일 전용 사이트는 지원 범위에 포함하지 않습니다. 이데일리와 추가한 IT 매체 10곳은 홈 화면의 기사 링크에 적용합니다.
+연합뉴스, 한겨레, 경향신문, 한국경제, 동아일보, 이데일리와 추가한 IT 매체 10곳은 홈 화면의 기사 링크에 적용합니다. 앞의 다섯 매체는 최신 기사 목록도 지원합니다. 검색, 카테고리와 모바일 전용 사이트는 지원 범위에 포함하지 않습니다.
 
 전용 어댑터가 없는 HTTPS 사이트에서는 팝업의 **이 사이트에서 사용**을 누르고 접근 권한을 허용합니다. 이후 방문에도 적용됩니다.
 

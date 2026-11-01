@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NotForMe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "뉴스 목록에서 광고성 PR 기사, 제품 공개 기사, 관심 없는 주제의 기사를 접거나 숨깁니다.",
   "permissions": [
     "storage",
@@ -19,11 +19,16 @@
       "matches": [
         "https://zdnet.co.kr/*",
         "https://*.zdnet.co.kr/*",
+        "https://www.yna.co.kr/",
         "https://www.yna.co.kr/news*",
+        "https://www.hani.co.kr/",
         "https://www.hani.co.kr/arti",
         "https://www.hani.co.kr/arti/",
+        "https://www.khan.co.kr/",
         "https://www.khan.co.kr/newest/articles*",
+        "https://www.hankyung.com/",
         "https://www.hankyung.com/all-news*",
+        "https://www.donga.com/",
         "https://www.donga.com/news/List*",
         "https://www.edaily.co.kr/",
         "https://www.etnews.com/",

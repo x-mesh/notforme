@@ -56,7 +56,10 @@ async function refreshStatus() {
 
   const lines = [];
   lines.push($("apiKey").value ? "Jev 설정을 확인하려면 연결 테스트를 눌러 주세요." : "Jev API 키를 설정해 주세요.");
-  if (stats) lines.push(`${stats.adapter === "common" ? "공통 추출기" : "이 페이지"}: ${stats.total}건 중 ${stats.hidden}건 가림${stats.error ? ` / 오류: ${stats.error}` : ""}`);
+  if (stats) {
+    lines.push(`${stats.adapter === "common" ? "공통 추출기" : "이 페이지"}: 기사 ${stats.total}건 감지 · ${stats.hidden}건 가림${stats.error ? ` / 오류: ${stats.error}` : ""}`);
+    if (stats.skipped?.multiple_articles) lines.push(`여러 기사 링크가 섞인 영역 ${stats.skipped.multiple_articles}건 제외`);
+  }
   else lines.push("이 페이지는 지원하지 않거나 아직 로드 중입니다.");
   status.textContent = lines.join("\n");
   status.style.whiteSpace = "pre-line";
@@ -142,5 +145,16 @@ $("enableSite").addEventListener("click", async () => {
     $("status").textContent = "이 사이트에 적용했어요. 기사별 판정은 디버깅 모드에서 확인해 주세요.";
   } catch (error) {
     $("status").textContent = error.message;
+  }
+});
+
+$("pickArticle").addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error("현재 페이지를 찾을 수 없습니다.");
+    await chrome.tabs.sendMessage(tab.id, { type: "pickArticle" });
+    window.close();
+  } catch {
+    $("status").textContent = "먼저 이 사이트에서 사용을 눌러 주세요.";
   }
 });

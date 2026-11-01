@@ -257,18 +257,27 @@ const NF_ADAPTERS = [
 
 const NF_COMMON_ADAPTER = {
   name: "common",
-  itemSelector: "article, li:has(h2), li:has(h3), li:has(h4)",
-  extract(el) {
+  itemSelector: "article, li:has(h2), li:has(h3), li:has(h4), li:has(strong a[href]), div:has(> strong a[href])",
+  extract(el, report = () => {}) {
     if (el.closest("nav, header, footer, aside, [role=navigation]")) return null;
     if (el.querySelector("h1, [itemprop=articleBody]")) return null;
     if (document.querySelector("[itemprop=articleBody]")) return null;
-    const headings = [...el.querySelectorAll("h2, h3, h4")];
+    const headings = [...el.querySelectorAll("h2, h3, h4, strong")].filter((heading) => heading.closest("a[href]") || heading.querySelector("a[href]"));
     const links = headings.map((heading) => heading.closest("a[href]") || heading.querySelector("a[href]"));
-    if (!links.length || links.some((link) => !link)) return null;
-    const urls = links.map((link) => new URL(link.getAttribute("href"), location.href));
+    if (!links.length) return null;
+    let urls;
+    try { urls = links.map((link) => new URL(link.getAttribute("href"), location.href)); }
+    catch { return null; }
     if (urls.some((url) => url.origin !== location.origin || url.pathname === location.pathname && url.search === location.search)) return null;
-    if (new Set(urls.map((url) => url.pathname + url.search)).size !== 1) return null;
-    if (el.querySelector("article, li:has(h2), li:has(h3), li:has(h4)")) return null;
+    if (new Set(urls.map((url) => url.pathname + url.search)).size !== 1) { report("multiple_articles"); return null; }
+    const articlePath = urls[0].pathname;
+    for (const link of el.querySelectorAll("a[href]")) {
+      let sibling;
+      try { sibling = new URL(link.getAttribute("href"), location.href); }
+      catch { return null; }
+      if (sibling.origin === location.origin && sibling.pathname !== articlePath && sibling.pathname !== location.pathname) { report("multiple_articles"); return null; }
+    }
+    if (el.querySelector("article, li:has(h2), li:has(h3), li:has(h4), li:has(strong a[href]), div:has(> strong a[href])")) return null;
     const url = urls[0];
     if (!/^https?:$/.test(url.protocol)) return null;
     url.hash = "";

@@ -186,7 +186,7 @@ const makeContentHarness = ({ withObserver = true, items: initialItems = [], set
   for (const item of items) { item.node ??= node(item.id); item.record.visualTarget ??= node(`${item.id}-target`); }
   const targets = new Set(items.map((item) => item.record.visualTarget));
   const document = {
-    body: {},
+    body: { append() {} },
     querySelectorAll: (selector) => selector === "article" ? items.map((item) => item.node) : selector === "[data-nf-reason]" ? [...targets].filter((target) => target.dataset.nfReason) : selector === "[data-nf-id]" ? [...targets].filter((target) => target.dataset.nfId) : [],
     createElement: (tag) => node(tag),
   };

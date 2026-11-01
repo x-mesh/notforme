@@ -13,7 +13,6 @@
 .nf-collapsed:not(.nf-open) {
   height: auto !important;
   min-height: 0 !important;
-  margin-bottom: 6px !important;
 }
 
 .nf-blur,
@@ -30,7 +29,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 4px;
+  margin: 0;
   padding: 3px 8px;
   border-left: 3px solid #b9bec7;
   background: #f4f5f7;
@@ -198,3 +197,8 @@
 .nf-picker-banner { position: fixed; z-index: 2147483647; top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 10px 12px; border: 1px solid #aebdca; border-radius: 8px; background: #f2f6f8; color: #1c2b3b; box-shadow: 0 4px 16px rgba(28, 43, 59, 0.2); font: 13px/1.4 system-ui, sans-serif; }
 .nf-picker-banner button { flex: none; padding: 4px 8px; border: 1px solid #899aa8; border-radius: 4px; background: #fff; color: #1c2b3b; font: inherit; cursor: pointer; }
 .nf-picker-banner button:focus-visible { outline: 2px solid #315cc5; outline-offset: 2px; }
+
+.nf-preview-detected { outline: 2px solid #1261ad !important; outline-offset: 2px !important; }
+.nf-preview-skipped { outline: 2px dashed #ad4e08 !important; outline-offset: 2px !important; }
+.nf-debug-retry { margin-top: 8px; padding: 4px 7px; border: 1px solid #8394a4; border-radius: 4px; background: #fff; color: #1c2b3b; font: inherit; cursor: pointer; }
+.nf-debug-retry:focus-visible { outline: 2px solid #315cc5; outline-offset: 2px; }

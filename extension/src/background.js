@@ -85,7 +85,7 @@ function buildRequest(items, topics, model, excludedTopics) {
 }
 
 
-async function classify({ items, topics = [], excludedTopics = [] }) {
+async function classify({ items, topics = [], excludedTopics = [], force = false }) {
   const connection = await getConnection();
   const tk = JSON.stringify([connection.endpoint, connection.model, topicsKey(topics), topicsKey(excludedTopics)]);
   const stored = (await chrome.storage.local.get(CACHE_KEY))[CACHE_KEY] || {};
@@ -93,7 +93,7 @@ async function classify({ items, topics = [], excludedTopics = [] }) {
   const misses = [];
   for (const it of items) {
     const hit = stored[cacheKeyFor(it.id, tk)];
-    if (hit) {
+    if (hit && !force) {
       hit.t = Date.now();
       results[it.id] = { kind: hit.kind, topic: hit.topic, excludedTopic: hit.excludedTopic, source: "cache" };
     } else misses.push(it);

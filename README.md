@@ -42,13 +42,19 @@ Supported pages:
 - VentureSquare: https://www.venturesquare.net/
 - Platum: https://platum.kr/
 
-The Yonhap, Hankyoreh, Kyunghyang Shinmun, Korea Economic Daily, Dong-A Ilbo, EDaily, and ten IT news adapters support homepage article links. The first five also support latest article lists. Search, category pages, and separate mobile sites are excluded.
+The common extractor also runs on other paths on supported domains. Coverage depends on page structure; separate mobile domains are not included.
 
 On other HTTPS sites, select **이 사이트에서 사용** in the popup. Grant access to that site. The extension also runs on later visits.
 
 The common extractor accepts article cards with headline links. It excludes navigation, nested groups, and explicit article bodies.
 
-Some sites do not expose suitable cards. Use the popup and debug mode to inspect the results.
+Some sites do not expose suitable cards. The popup reports detected articles and can highlight detected and skipped areas for eight seconds.
+
+Use **기사 직접 선택** to select a missed headline link. The URL is remembered for future visits. **저장한 기사 설정** lists manual selections and keep/hide overrides; removing a manual selection takes effect immediately on open pages. Focus an article and press `Alt+Down` to reach its controls.
+
+The popup can export and import filter preferences and article settings without the API key, and retry failed articles.
+
+In debug mode, expand the details to see the filter decision and reclassify one article without using its cached result. Reclassification calls the API. Publisher-label decisions made by local rules do not call the API.
 
 ## How it works
 
@@ -61,7 +67,7 @@ The extension sends titles and the first 200 summary characters. It does not sen
 
 The local store holds the API key, endpoint, and model. Content scripts cannot access this store. Keys do not sync across browsers.
 
-The local store is not an encrypted secret vault. Filter preferences use `chrome.storage.sync`.
+The local store is not an encrypted secret vault. Filter preferences, per-article overrides, and manually selected article URLs use `chrome.storage.sync`.
 
 Articles use the selected probability threshold (default 0.8). Cache keys include the article, topics, endpoint, model, and definition version.
 
@@ -86,6 +92,7 @@ npm test
 npm run check
 npm run package
 npm run package:check
+npm run test:browser # requires Python Playwright and Chrome or Chromium
 ```
 
 The tests use a mock API. They do not spend API credits.

@@ -17,6 +17,12 @@
     #status.bad { background: #fdecec; color: #8a1c1c; }
     button { margin-top: 6px; padding: 3px 8px; font: inherit; cursor: pointer; }
     input[type="range"] { flex: 1; }
+    .saved-list { list-style: none; margin: 6px 0; padding: 0; }
+    .saved-list li { display: flex; align-items: start; gap: 8px; padding: 6px 0; border-top: 1px solid #e1e5e9; }
+    .saved-list span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .saved-list button { flex: none; margin: 0; }
+    .empty { color: #596778; }
+    :focus-visible { outline: 2px solid #315cc5; outline-offset: 2px; }
   </style>
 </head>
 <body>
@@ -74,9 +80,24 @@
   <button id="enableSite">이 사이트에서 사용</button>
   <p class="sub">공통 추출기 · 제목이 있는 기사 카드만 처리해요.</p>
 
-  <button id="pickArticle">이번 페이지에서 기사 선택</button>
-  <p class="sub">놓친 기사 제목을 선택해 필터링해요. 새로고침하면 선택이 해제돼요.</p>
+  <button id="previewDetection">감지 영역 미리보기</button>
+  <p class="sub">8초 동안 감지된 영역은 파란 실선, 제외된 영역은 주황 점선으로 표시해요.</p>
+  <details>
+    <summary>저장한 기사 설정</summary>
+    <p class="sub">유지·가리기와 직접 지정한 기사를 관리해요.</p>
+    <ul class="saved-list" id="savedArticles"></ul>
 
+  </details>
+
+  <button id="pickArticle">기사 직접 선택</button>
+  <p class="sub">놓친 기사 제목을 선택해 필터링하고 다음 방문에도 기억해요. 기사에 포커스한 뒤 Alt+↓로 기사 설정을 열 수 있어요.</p>
+
+  <button id="retryFailed">실패한 기사 다시 시도</button>
+  <details><summary>설정 백업</summary>
+    <p class="sub">필터 설정과 기사별 설정을 백업해요. API 키는 포함하지 않아요.</p>
+    <button id="exportSettings">내보내기</button>
+    <label for="importSettings">가져오기</label><input type="file" id="importSettings" accept="application/json,.json">
+  </details>
   <div id="status" role="status" aria-live="polite">설정을 불러오는 중...</div>
   <script src="popup.js"></script>
 </body>

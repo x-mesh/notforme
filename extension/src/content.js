@@ -17,6 +17,7 @@
     mode: "collapse",
     threshold: 0.8,
     userOverrides: {},
+    manualArticles: {},
   };
   const BATCH_SIZE = 30;
   const DEBOUNCE_MS = 300;
@@ -45,6 +46,9 @@
   let overrideTimer = null;
   const errors = new Map();
   const extractionSkipped = { multiple_articles: 0 };
+  const skippedElements = new Set();
+  const refreshing = new Set();
+  const inFlight = new Set();
   const hasIntersectionObserver = typeof IntersectionObserver === "function";
   const visibilityDiagnostic = hasIntersectionObserver ? "" : "IntersectionObserver를 사용할 수 없어 모든 기사를 즉시 판정합니다.";
   let visibilityObserver = null;
@@ -129,10 +133,11 @@
       if (el.dataset.nfSeen) continue;
       el.dataset.nfSeen = "1";
       const rec = adapter.extract(el, (reason) => {
-        if (reason in extractionSkipped) extractionSkipped[reason]++;
+        if (reason in extractionSkipped) { extractionSkipped[reason]++; skippedElements.add(el); }
       });
       if (rec) registerRecord(rec, el);
     }
+    restoreManualArticles();
   };
 
   const classifyLocal = (rec) => {
@@ -176,16 +181,17 @@
     return out;
   };
 
-  const classifyRemote = async (items) => {
+  const classifyRemote = async (items, force = false) => {
     let succeeded = true;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       const batch = items.slice(i, i + BATCH_SIZE);
-      for (const it of batch) tried.add(it.id);
+      for (const it of batch) { tried.add(it.id); inFlight.add(it.id); }
       apply();
       let res;
       try {
         res = await chrome.runtime.sendMessage({
         type: "classify",
+        force,
         items: batch,
         topics: needsTopic() ? settings.topics : [],
         excludedTopics: needsExcludedTopic() ? settings.excludedTopics : [],
@@ -193,6 +199,7 @@
       } catch {
         res = { ok: false, error: "확장 프로그램과 통신하지 못했습니다." };
       }
+      for (const it of batch) inFlight.delete(it.id);
       if (!res || !res.ok) {
         lastError = (res && res.error) || "no response";
         for (const item of batch) {
@@ -317,12 +324,14 @@
       return;
     }
     const value = settings.userOverrides?.[row.url];
-    if (previous?.dataset.nfOverride === (value || "")) return;
+    const feedback = reasonFor(el.dataset.nfId, decisions.get(el.dataset.nfId)) === "ad";
+    if (previous?.dataset.nfOverride === (value || "") && previous?.dataset.nfFeedback === String(feedback)) return;
     const wasActive = activeOverride?.target === el;
     previous?.remove();
     const controls = document.createElement("div");
     controls.className = "nf-override-controls";
     controls.dataset.nfOverride = value || "";
+    controls.dataset.nfFeedback = String(feedback);
     const addButton = (label, next, pressed) => {
       const button = document.createElement("button");
       button.type = "button";
@@ -335,7 +344,8 @@
       });
       controls.append(button);
     };
-    addButton("유지하기", "keep", value === "keep");
+    if (feedback) addButton(`광고가 아니에요 (PR ${Number(decisions.get(el.dataset.nfId)?.kind?.ad_pr).toFixed(3)})`, "keep", value === "keep");
+    else addButton("유지하기", "keep", value === "keep");
     addButton("항상 가리기", "hide", value === "hide");
     if (value) addButton("필터로 되돌리기", null, false);
     controls.addEventListener("pointerenter", () => clearTimeout(overrideTimer));
@@ -349,6 +359,13 @@
       el.addEventListener("pointerleave", hideOverrideLater);
       el.addEventListener("focusin", () => showOverride(el));
       el.addEventListener("focusout", hideOverrideLater);
+      el.addEventListener("keydown", (event) => {
+        if (event.altKey && event.key === "ArrowDown") {
+          event.preventDefault();
+          showOverride(el);
+          overridePanels.get(el)?.querySelector("button")?.focus();
+        }
+      });
       overrideBound.add(el);
     }
     if (wasActive) showOverride(el);
@@ -362,6 +379,8 @@
     else if (!decision && settings.userOverrides?.[rows.get(id)?.url]) lines.push(settings.userOverrides[rows.get(id).url] === "keep" ? "사용자 설정: 유지 · 판정 생략" : "사용자 설정: 항상 가리기 · 판정 생략");
     else if (!decision) lines.push(tried.has(id) ? "판정 중" : "미판정: 요청 대기");
     else lines.push(reason ? `판정: ${TAGS[reason]} → 가리기${settings.mode === "remove" ? " (디버깅 중에는 접어서 표시)" : ""}` : settings.userOverrides?.[rows.get(id)?.url] === "keep" ? "사용자 설정: 유지" : "표시 유지 (활성 필터 기준 미달)");
+    const scores = { ad: ["광고성 PR", decision?.kind?.ad_pr], product: ["제품 공개", decision?.kind?.product_launch], offTopic: ["남길 주제 아님", decision?.topic?.off_topic], excludedTopic: ["제외 주제", decision?.excludedTopic?.on_topic] };
+    if (reason && scores[reason] && typeof scores[reason][1] === "number") lines.push(`${scores[reason][0]} ${scores[reason][1].toFixed(3)} ≥ 기준 ${Number(settings.threshold).toFixed(2)}`);
     lines.splice(0, 2, `${lines[0]} · ${lines[1]}`);
     let source = "";
     if (decision) {
@@ -386,6 +405,7 @@
     const wasOpen = node.querySelector(".nf-debug-details")?.open || false;
     node.textContent = "";
     node.dataset.nfText = text;
+    node.dataset.nfRefreshing = String(refreshing.has(id));
     node.dataset.nfStyle = settings.debugStyle === "strip" ? "strip" : "lens";
     const header = make("div", "nf-debug-header");
     const brand = make("div", "nf-debug-brand");
@@ -416,6 +436,21 @@
     const details = make("details", "nf-debug-details");
     details.open = wasOpen;
     details.append(make("summary", "nf-debug-summary", "상세"), make("div", "nf-debug-description", text));
+    const retry = make("button", "nf-debug-retry", refreshing.has(id) ? "재판정 중" : "이 기사 재판정");
+    retry.type = "button";
+    retry.disabled = refreshing.has(id) || decision?.source === "rule";
+    if (decision?.source === "rule") retry.textContent = "로컬 규칙 판정";
+    retry.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (refreshing.has(id)) return;
+      refreshing.add(id);
+      retry.disabled = true;
+      retry.textContent = "재판정 중";
+      try { await classifyRemote([{ id, title: rows.get(id).title, summary: rows.get(id).summary }], true); }
+      finally { refreshing.delete(id); apply(); }
+    });
+    details.append(retry);
     node.append(header, metrics, details);
   };
 
@@ -436,7 +471,7 @@
             renderDebug(node, id, decisions.get(id), reason, text);
             el.append(node);
             debugPanels.set(el, node);
-          } else if (panel.dataset.nfText !== text || panel.dataset.nfStyle !== (settings.debugStyle === "strip" ? "strip" : "lens")) {
+          } else if (panel.dataset.nfText !== text || panel.dataset.nfRefreshing !== String(refreshing.has(id)) || panel.dataset.nfStyle !== (settings.debugStyle === "strip" ? "strip" : "lens")) {
             renderDebug(panel, id, decisions.get(id), reason, text);
           }
           el.classList.add("nf-debugging");
@@ -458,6 +493,29 @@
     }
   };
 
+  const pruneRows = () => {
+    for (const [id, row] of rows) {
+      const manualRemoved = id.startsWith("manual:") && !settings.manualArticles?.[row.url];
+      for (const el of [...row.els]) {
+        if (el.isConnected !== false && !manualRemoved) continue;
+        unobserveRow(id, { els: [el] });
+        overridePanels.get(el)?.remove();
+        overridePanels.delete(el);
+        debugPanels.get(el)?.remove();
+        debugPanels.delete(el);
+        if (manualRemoved && el.isConnected) {
+          const link = el.querySelector(":scope > a");
+          if (link) el.replaceWith(link);
+        }
+        row.els = row.els.filter((item) => item !== el);
+      }
+      if (!row.els.length) {
+        rows.delete(id); decisions.delete(id); tried.delete(id); queued.delete(id); errors.delete(id);
+      }
+    }
+    for (const el of skippedElements) if (el.isConnected === false) skippedElements.delete(el);
+  };
+
   const run = async () => {
     if (running) {
       rerun = true;
@@ -465,6 +523,7 @@
     }
     running = true;
     try {
+      pruneRows();
       collect();
       if (anyFilterOn()) {
         if (!hasIntersectionObserver) for (const item of missing()) queue(item.id);
@@ -490,6 +549,41 @@
     timer = setTimeout(run, DEBOUNCE_MS);
   };
 
+  const registerManualLink = (link, canonical) => {
+    if (link.closest(".nf-manual-target, nav, header, footer, aside, [role=navigation], .nf-debug, .nf-override-controls")) return false;
+    if ([...rows.values()].some((row) => row.url === canonical && row.els.some((el) => el === link || el.contains?.(link)))) return false;
+    const title = (link.textContent || "").replace(/\s+/g, " ").trim();
+    if (!title) return false;
+    const wrapper = document.createElement("span");
+    wrapper.className = "nf-manual-target";
+    link.before(wrapper);
+    wrapper.append(link);
+    const id = `manual:${canonical}`;
+    registerRecord({ id, title: title.slice(0, 140), summary: "", url: canonical, visualTarget: wrapper }, wrapper);
+    queue(id);
+    return true;
+  };
+
+  const restoreManualArticles = () => {
+    if (!Object.keys(settings.manualArticles || {}).length) return;
+    for (const link of document.querySelectorAll("a[href]")) {
+      let canonical;
+      try { canonical = canonicalUrl(link.href); } catch { continue; }
+      if (settings.manualArticles[canonical]) registerManualLink(link, canonical);
+    }
+  };
+
+  const previewDetection = () => {
+    const detected = [...rows.values()].flatMap((row) => row.els).filter((el) => el.isConnected);
+    const skipped = [...skippedElements].filter((el) => el.isConnected);
+    for (const el of detected) el.classList.add("nf-preview-detected");
+    for (const el of skipped) el.classList.add("nf-preview-skipped");
+    setTimeout(() => {
+      for (const el of detected) el.classList.remove("nf-preview-detected");
+      for (const el of skipped) el.classList.remove("nf-preview-skipped");
+    }, 8000);
+  };
+
   let stopPicking = null;
   const startPicking = () => {
     if (stopPicking) return;
@@ -497,7 +591,7 @@
     banner.className = "nf-picker-banner";
     banner.setAttribute("role", "status");
     const label = document.createElement("span");
-    label.textContent = "필터링할 기사 제목을 선택하세요. 이번 페이지에서만 적용됩니다.";
+    label.textContent = "필터링할 기사 제목을 선택하세요. 다음 방문에도 기억합니다.";
     const cancel = document.createElement("button");
     cancel.type = "button";
     cancel.textContent = "취소";
@@ -510,7 +604,7 @@
       stopPicking = null;
     };
     const keydown = (event) => { if (event.key === "Escape") cleanup(); };
-    const pick = (event) => {
+    const pick = async (event) => {
       if (banner.contains(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -531,13 +625,11 @@
         label.textContent = "이미 감지한 기사입니다. 다른 제목을 선택하거나 취소하세요.";
         return;
       }
-      const wrapper = document.createElement("span");
-      wrapper.className = "nf-manual-target";
-      link.before(wrapper);
-      wrapper.append(link);
-      const id = `manual:${canonical}`;
-      registerRecord({ id, title: title.slice(0, 140), summary: "", url: canonical, visualTarget: wrapper }, wrapper);
-      queue(id);
+      const manualArticles = { ...(settings.manualArticles || {}), [canonical]: title.slice(0, 140) };
+      try { await chrome.storage.sync.set({ manualArticles }); }
+      catch { label.textContent = "선택을 저장하지 못했습니다. 다시 시도해 주세요."; return; }
+      settings.manualArticles = manualArticles;
+      if (!registerManualLink(link, canonical)) return;
       cleanup();
       schedule();
     };
@@ -548,19 +640,28 @@
   };
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg && msg.type === "previewDetection") {
+      previewDetection();
+      sendResponse({ ok: true });
+    }
     if (msg && msg.type === "pickArticle") {
       startPicking();
       sendResponse({ ok: true });
     }
+    if (msg && msg.type === "retryFailed") {
+      for (const id of errors.keys()) { tried.delete(id); errors.delete(id); queue(id); }
+      schedule();
+      sendResponse({ ok: true });
+    }
     if (msg && msg.type === "stats") {
       const hidden = document.querySelectorAll("[data-nf-reason]").length;
-      sendResponse({ adapter: adapter.name, hidden, total: document.querySelectorAll("[data-nf-id]").length, skipped: settings.debug && adapter.name === "common" ? extractionSkipped : null, error: lastError || visibilityDiagnostic });
+      sendResponse({ adapter: adapter.name, hidden, total: document.querySelectorAll("[data-nf-id]").length, pending: inFlight.size, failed: errors.size, skipped: settings.debug && adapter.name === "common" ? extractionSkipped : null, error: lastError || visibilityDiagnostic });
     }
   });
 
   chrome.storage.onChanged.addListener(async (_changes, area) => {
     if (area !== "sync") return;
-    if (Object.keys(_changes).some((key) => !["debug", "debugStyle", "mode", "threshold"].includes(key))) {
+    if (Object.keys(_changes).some((key) => !["debug", "debugStyle", "manualArticles", "mode", "threshold"].includes(key))) {
       tried.clear();
       errors.clear();
     }

@@ -6,6 +6,7 @@
 
   const DEFAULTS = {
     debug: false,
+    debugStyle: "lens",
   enabled: true,
     hideAd: true,
     hideProduct: false,
@@ -38,7 +39,12 @@
   const targetIds = new WeakMap();
   const observedTargets = new Set();
   const debugPanels = new Map();
+  const overridePanels = new Map();
+  const overrideBound = new WeakSet();
+  let activeOverride = null;
+  let overrideTimer = null;
   const errors = new Map();
+  const extractionSkipped = { multiple_articles: 0 };
   const hasIntersectionObserver = typeof IntersectionObserver === "function";
   const visibilityDiagnostic = hasIntersectionObserver ? "" : "IntersectionObserver를 사용할 수 없어 모든 기사를 즉시 판정합니다.";
   let visibilityObserver = null;
@@ -46,6 +52,7 @@
   let running = false;
   let rerun = false;
   let lastError = "";
+  let lastBadgeCount = null;
 
   const loadSettings = async () => {
     const stored = await chrome.storage.sync.get(DEFAULTS);
@@ -104,22 +111,27 @@
     }
   };
 
+  const registerRecord = (rec, fallback) => {
+    const target = rec.visualTarget || fallback;
+    target.dataset.nfId = rec.id;
+    const row = rows.get(rec.id) || { els: [], title: rec.title, summary: rec.summary || "", url: canonicalUrl(rec.url) };
+    if (!rows.has(rec.id)) rows.set(rec.id, row);
+    if (!row.els.includes(target)) row.els.push(target);
+    row.title = rec.title;
+    row.summary = rec.summary || row.summary;
+    row.url ||= canonicalUrl(rec.url);
+    classifyLocal(rec);
+    observeTarget(rec.id, target);
+  };
+
   const collect = () => {
     for (const el of document.querySelectorAll(adapter.itemSelector)) {
       if (el.dataset.nfSeen) continue;
       el.dataset.nfSeen = "1";
-      const rec = adapter.extract(el);
-      if (!rec) continue;
-      const target = rec.visualTarget || el;
-      target.dataset.nfId = rec.id;
-      const row = rows.get(rec.id) || { els: [], title: rec.title, summary: rec.summary || "", url: canonicalUrl(rec.url) };
-      if (!rows.has(rec.id)) rows.set(rec.id, row);
-      if (!row.els.includes(target)) row.els.push(target);
-      row.title = rec.title;
-      row.summary = rec.summary || row.summary;
-      row.url ||= canonicalUrl(rec.url);
-      classifyLocal(rec);
-      observeTarget(rec.id, target);
+      const rec = adapter.extract(el, (reason) => {
+        if (reason in extractionSkipped) extractionSkipped[reason]++;
+      });
+      if (rec) registerRecord(rec, el);
     }
   };
 
@@ -130,6 +142,19 @@
       return true;
     }
     return false;
+  };
+
+  const queueVisible = () => {
+    const height = globalThis.innerHeight;
+    const width = globalThis.innerWidth;
+    if (!(height > 0 && width > 0)) return;
+    for (const [id, row] of rows) {
+      if (!needsRemote(id)) continue;
+      if (row.els.some((el) => {
+        const rect = el.getBoundingClientRect?.();
+        return rect && rect.width > 0 && rect.height > 0 && rect.bottom >= -height && rect.top <= height * 2 && rect.right >= 0 && rect.left <= width;
+      })) queue(id);
+    }
   };
 
   const missing = () => {
@@ -152,9 +177,11 @@
   };
 
   const classifyRemote = async (items) => {
+    let succeeded = true;
     for (let i = 0; i < items.length; i += BATCH_SIZE) {
       const batch = items.slice(i, i + BATCH_SIZE);
       for (const it of batch) tried.add(it.id);
+      apply();
       let res;
       try {
         res = await chrome.runtime.sendMessage({
@@ -172,8 +199,9 @@
           errors.set(item.id, lastError);
           unobserveRow(item.id, rows.get(item.id));
         }
+        succeeded = false;
         apply();
-        return false;
+        continue;
       }
       lastError = "";
       for (const item of batch) {
@@ -187,7 +215,7 @@
       }
       apply();
     }
-    return true;
+    return succeeded;
   };
 
   const reasonFor = (id, d) => {
@@ -246,11 +274,51 @@
     await chrome.storage.sync.set({ userOverrides });
   };
 
+  const positionOverride = () => {
+    if (!activeOverride) return;
+    const { target, controls } = activeOverride;
+    if (!target.isConnected) { controls.classList.remove("nf-visible"); activeOverride = null; return; }
+    const rect = target.getBoundingClientRect();
+    const width = controls.offsetWidth;
+    const height = controls.offsetHeight;
+    const left = Math.max(8, Math.min(rect.left, globalThis.innerWidth - width - 8));
+    const below = rect.bottom - 4;
+    const top = below + height <= globalThis.innerHeight - 8 ? below : Math.max(8, rect.top - height + 4);
+    controls.style.left = `${left}px`;
+    controls.style.top = `${top}px`;
+  };
+
+  const showOverride = (target) => {
+    clearTimeout(overrideTimer);
+    const controls = overridePanels.get(target);
+    if (!controls) return;
+    if (activeOverride?.controls !== controls) activeOverride?.controls.classList.remove("nf-visible");
+    activeOverride = { target, controls };
+    controls.classList.add("nf-visible");
+    positionOverride();
+  };
+
+  const hideOverrideLater = () => {
+    clearTimeout(overrideTimer);
+    overrideTimer = setTimeout(() => {
+      if (!activeOverride) return;
+      const { target, controls } = activeOverride;
+      if (target.contains(document.activeElement) || controls.contains(document.activeElement) || controls.matches(":hover")) return;
+      controls.classList.remove("nf-visible");
+      activeOverride = null;
+    }, 160);
+  };
+
   const renderOverrideControls = (el, row) => {
-    const previous = el.querySelector(":scope > .nf-override-controls");
-    if (!row.url) { previous?.remove(); return; }
+    const previous = overridePanels.get(el);
+    if (!row.url) {
+      previous?.remove();
+      overridePanels.delete(el);
+      return;
+    }
     const value = settings.userOverrides?.[row.url];
     if (previous?.dataset.nfOverride === (value || "")) return;
+    const wasActive = activeOverride?.target === el;
     previous?.remove();
     const controls = document.createElement("div");
     controls.className = "nf-override-controls";
@@ -270,7 +338,20 @@
     addButton("유지하기", "keep", value === "keep");
     addButton("항상 가리기", "hide", value === "hide");
     if (value) addButton("필터로 되돌리기", null, false);
-    el.append(controls);
+    controls.addEventListener("pointerenter", () => clearTimeout(overrideTimer));
+    controls.addEventListener("pointerleave", hideOverrideLater);
+    controls.addEventListener("focusin", () => clearTimeout(overrideTimer));
+    controls.addEventListener("focusout", hideOverrideLater);
+    overridePanels.set(el, controls);
+    document.body.append(controls);
+    if (!overrideBound.has(el)) {
+      el.addEventListener("pointerenter", () => showOverride(el));
+      el.addEventListener("pointerleave", hideOverrideLater);
+      el.addEventListener("focusin", () => showOverride(el));
+      el.addEventListener("focusout", hideOverrideLater);
+      overrideBound.add(el);
+    }
+    if (wasActive) showOverride(el);
   };
 
   const debugText = (id, decision, reason) => {
@@ -278,6 +359,7 @@
     if (!settings.enabled) lines.push("필터 사용 꺼짐 → 표시 유지");
     else if (!anyFilterOn()) lines.push("선택한 필터 없음 → 표시 유지");
     else if (errors.has(id)) lines.push(`미판정: ${errors.get(id)}${decision ? " · 이전 판정 유지" : " → 표시 유지"}`);
+    else if (!decision && settings.userOverrides?.[rows.get(id)?.url]) lines.push(settings.userOverrides[rows.get(id).url] === "keep" ? "사용자 설정: 유지 · 판정 생략" : "사용자 설정: 항상 가리기 · 판정 생략");
     else if (!decision) lines.push(tried.has(id) ? "판정 중" : "미판정: 요청 대기");
     else lines.push(reason ? `판정: ${TAGS[reason]} → 가리기${settings.mode === "remove" ? " (디버깅 중에는 접어서 표시)" : ""}` : settings.userOverrides?.[rows.get(id)?.url] === "keep" ? "사용자 설정: 유지" : "표시 유지 (활성 필터 기준 미달)");
     lines.splice(0, 2, `${lines[0]} · ${lines[1]}`);
@@ -304,6 +386,7 @@
     const wasOpen = node.querySelector(".nf-debug-details")?.open || false;
     node.textContent = "";
     node.dataset.nfText = text;
+    node.dataset.nfStyle = settings.debugStyle === "strip" ? "strip" : "lens";
     const header = make("div", "nf-debug-header");
     const brand = make("div", "nf-debug-brand");
     const icon = make("img", "nf-debug-icon");
@@ -312,7 +395,7 @@
     icon.width = 24;
     icon.height = 24;
     brand.append(icon, make("span", "nf-debug-name", "NotForMe 디버그"));
-    const result = !settings.enabled || !anyFilterOn() ? "필터 꺼짐" : errors.has(id) ? "요청 실패" : !decision ? "미판정" : reason ? TAGS[reason] : "표시 유지";
+    const result = !settings.enabled || !anyFilterOn() ? "필터 꺼짐" : errors.has(id) ? "요청 실패" : !decision && settings.userOverrides?.[rows.get(id)?.url] ? (reason ? TAGS[reason] : "사용자 설정: 유지") : !decision ? (tried.has(id) ? "판정 중" : "요청 대기") : reason ? TAGS[reason] : "표시 유지";
     const badge = make("span", reason ? "nf-debug-result nf-debug-result-hidden" : "nf-debug-result", result);
     header.append(brand, badge);
     const metrics = make("div", "nf-debug-metrics");
@@ -337,8 +420,10 @@
   };
 
   const apply = () => {
+    let hidden = 0;
     for (const [id, row] of rows) {
       const reason = anyFilterOn() ? reasonFor(id, decisions.get(id)) : null;
+      if (reason) hidden += 1;
       for (const el of row.els) {
         if (reason) hide(el, reason, row.title);
         else if (el.dataset.nfReason) restore(el);
@@ -351,7 +436,7 @@
             renderDebug(node, id, decisions.get(id), reason, text);
             el.append(node);
             debugPanels.set(el, node);
-          } else if (panel.dataset.nfText !== text) {
+          } else if (panel.dataset.nfText !== text || panel.dataset.nfStyle !== (settings.debugStyle === "strip" ? "strip" : "lens")) {
             renderDebug(panel, id, decisions.get(id), reason, text);
           }
           el.classList.add("nf-debugging");
@@ -361,6 +446,14 @@
           el.classList.remove("nf-debugging");
         }
         renderOverrideControls(el, row);
+      }
+    }
+    if (hidden !== lastBadgeCount) {
+      lastBadgeCount = hidden;
+      try {
+        const message = chrome.runtime.sendMessage({ type: "badge", hidden, badge: true });
+        message?.catch(() => {});
+      } catch {
       }
     }
   };
@@ -375,6 +468,7 @@
       collect();
       if (anyFilterOn()) {
         if (!hasIntersectionObserver) for (const item of missing()) queue(item.id);
+        else queueVisible();
         const todo = queuedItems();
         if (todo.length) {
           apply();
@@ -396,16 +490,77 @@
     timer = setTimeout(run, DEBOUNCE_MS);
   };
 
+  let stopPicking = null;
+  const startPicking = () => {
+    if (stopPicking) return;
+    const banner = document.createElement("div");
+    banner.className = "nf-picker-banner";
+    banner.setAttribute("role", "status");
+    const label = document.createElement("span");
+    label.textContent = "필터링할 기사 제목을 선택하세요. 이번 페이지에서만 적용됩니다.";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "취소";
+    banner.append(label, cancel);
+    document.body.append(banner);
+    const cleanup = () => {
+      document.removeEventListener("click", pick, true);
+      document.removeEventListener("keydown", keydown, true);
+      banner.remove();
+      stopPicking = null;
+    };
+    const keydown = (event) => { if (event.key === "Escape") cleanup(); };
+    const pick = (event) => {
+      if (banner.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const link = event.target.closest?.("a[href]");
+      if (!link || link.closest("nav, header, footer, aside, [role=navigation], .nf-debug, .nf-override-controls")) {
+        label.textContent = "기사 제목 링크를 선택해 주세요. Esc를 누르면 취소합니다.";
+        return;
+      }
+      let url;
+      try { url = new URL(link.href, location.href); } catch { return; }
+      const title = (link.textContent || "").replace(/\s+/g, " ").trim();
+      if (url.origin !== location.origin || !/^https?:$/.test(url.protocol) || !title || (url.pathname === location.pathname && url.search === location.search)) {
+        label.textContent = "이 페이지 안의 기사 제목 링크를 선택해 주세요.";
+        return;
+      }
+      const canonical = canonicalUrl(url.href);
+      if ([...rows.values()].some((row) => row.url === canonical)) {
+        label.textContent = "이미 감지한 기사입니다. 다른 제목을 선택하거나 취소하세요.";
+        return;
+      }
+      const wrapper = document.createElement("span");
+      wrapper.className = "nf-manual-target";
+      link.before(wrapper);
+      wrapper.append(link);
+      const id = `manual:${canonical}`;
+      registerRecord({ id, title: title.slice(0, 140), summary: "", url: canonical, visualTarget: wrapper }, wrapper);
+      queue(id);
+      cleanup();
+      schedule();
+    };
+    cancel.addEventListener("click", cleanup);
+    document.addEventListener("click", pick, true);
+    document.addEventListener("keydown", keydown, true);
+    stopPicking = cleanup;
+  };
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg && msg.type === "pickArticle") {
+      startPicking();
+      sendResponse({ ok: true });
+    }
     if (msg && msg.type === "stats") {
       const hidden = document.querySelectorAll("[data-nf-reason]").length;
-      sendResponse({ adapter: adapter.name, hidden, total: document.querySelectorAll("[data-nf-id]").length, error: lastError || visibilityDiagnostic });
+      sendResponse({ adapter: adapter.name, hidden, total: document.querySelectorAll("[data-nf-id]").length, skipped: settings.debug && adapter.name === "common" ? extractionSkipped : null, error: lastError || visibilityDiagnostic });
     }
   });
 
   chrome.storage.onChanged.addListener(async (_changes, area) => {
     if (area !== "sync") return;
-    if (Object.keys(_changes).some((key) => !["debug", "mode", "threshold"].includes(key))) {
+    if (Object.keys(_changes).some((key) => !["debug", "debugStyle", "mode", "threshold"].includes(key))) {
       tried.clear();
       errors.clear();
     }
@@ -437,6 +592,10 @@
     }, { root: null, rootMargin: "100% 0px", threshold: 0 });
   }
 
+  globalThis.addEventListener?.("scroll", positionOverride, { passive: true, capture: true });
+  globalThis.addEventListener?.("resize", positionOverride, { passive: true });
+  globalThis.addEventListener?.("scroll", schedule, { passive: true });
+  globalThis.addEventListener?.("resize", schedule, { passive: true });
   new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
 
   loadSettings().then(run);

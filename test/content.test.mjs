@@ -81,6 +81,15 @@ assert.equal(panel.querySelector(".nf-debug-metrics").children.length, 5);
 assert.match(panel.textContent, /로컬 규칙/);
 assert.match(panel.textContent, /광고성 PR 1.000/);
 assert.match(panel.textContent, /현재 기준: 0.80/);
+assert.equal(panel.dataset.nfStyle, "lens");
+panel.querySelector(".nf-debug-details").open = true;
+settings.debugStyle = "strip";
+await changed({ debugStyle: {} }, "sync");
+await settle();
+assert.equal(panel.dataset.nfStyle, "strip");
+assert.equal(panel.querySelector(".nf-debug-details").open, true, "changing style preserves expanded details");
+assert.match(panel.textContent, /광고성 PR 1.000/);
+
 settings.debug = false;
 await changed({ debug: {} }, "sync");
 await settle();
@@ -105,18 +114,47 @@ vm.runInNewContext(readFileSync(new URL("../extension/src/content.js", import.me
   nfPickAdapter: () => ({ itemSelector: "article", extract: () => ({ id: "remote", title: "게임 OST 공개", summary: "출시 홍보" }) }),
   chrome: {
     storage: { sync: { get: async (defaults) => ({ ...defaults, ...settings }) }, onChanged: { addListener: (fn) => { changed = fn; } } },
-    runtime: { getURL: (path) => `chrome-extension://test/${path}`, onMessage: { addListener: () => {} }, sendMessage: async () => { requests++; return JSON.parse(JSON.stringify(remoteResult)); } },
+    runtime: { getURL: (path) => `chrome-extension://test/${path}`, onMessage: { addListener: () => {} }, sendMessage: async (message) => { if (message.badge) return { ok: true }; requests++; return JSON.parse(JSON.stringify(remoteResult)); } },
   },
 });
 await settle();
 assert.match(panel.textContent, /미판정: Jev API HTTP 401/);
 assert.match(panel.textContent, /표시 유지/);
+settings.debugStyle = "strip";
+await changed({ debugStyle: {} }, "sync");
+await settle();
+assert.equal(requests, 1, "debug style must not retry a failed API call");
 settings.debug = false;
 await changed({ debug: {} }, "sync");
 await settle();
 assert.equal(requests, 1, "debug toggle must not retry a failed API call");
 assert.equal(panel, null);
 console.log("debug error and toggle tests passed");
+
+{
+  el.dataset = {};
+  classes.clear();
+  stub = null;
+  settings = { debug: true };
+  let resolveRequest;
+  vm.runInNewContext(readFileSync(new URL("../extension/src/content.js", import.meta.url), "utf8"), {
+    document, MutationObserver: class { observe() {} },
+    setTimeout: (fn) => { fn(); return 1; }, clearTimeout: () => {},
+    nfPickAdapter: () => ({ itemSelector: "article", extract: () => ({ id: "pending", title: "판정 대기 중인 기사", summary: "" }) }),
+    chrome: {
+      storage: { sync: { get: async (defaults) => ({ ...defaults, ...settings }) }, onChanged: { addListener: () => {} } },
+      runtime: { getURL: (path) => path, onMessage: { addListener: () => {} }, sendMessage: (message) => message.badge ? Promise.resolve({ ok: true }) : new Promise((resolve) => { resolveRequest = resolve; }) },
+    },
+  });
+  await settle();
+  assert.match(panel.textContent, /판정 중/, "in-flight requests update the debug card before the response");
+  assert.doesNotMatch(panel.textContent, /요청 대기/);
+  resolveRequest({ ok: true, results: { pending: { kind: { news: 1 }, source: "model" } } });
+  await settle();
+  assert.match(panel.textContent, /표시 유지/);
+}
+console.log("debug in-flight status tests passed");
+
 
 settings = { debug: true, hideAd: false, hideOffTopic: true, topics: ["자동차"], hideExcludedTopic: true, excludedTopics: ["전기차"] };
 remoteResult = { ok: true, results: { remote: { kind: { news: 1 }, topic: { on_topic: 1 }, excludedTopic: { on_topic: 1 }, source: "model" } } };
@@ -137,7 +175,7 @@ assert.equal(el.dataset.nfReason, "excludedTopic", "exclusion works without a ke
 console.log("topic filter tests passed");
 
 const contentSource = readFileSync(new URL("../extension/src/content.js", import.meta.url), "utf8");
-const makeContentHarness = ({ withObserver = true, items: initialItems = [], settings: initialSettings = { mode: "remove" } } = {}) => {
+const makeContentHarness = ({ withObserver = true, items: initialItems = [], settings: initialSettings = { mode: "remove" }, failFirstBatch = false, viewport = false } = {}) => {
   const items = [...initialItems];
   const calls = [];
   let settingsValue = { enabled: true, hideAd: true, hideProduct: false, hideOffTopic: false, hideExcludedTopic: false, topics: [], excludedTopics: [], debug: false, threshold: 0.8, ...initialSettings };
@@ -148,7 +186,7 @@ const makeContentHarness = ({ withObserver = true, items: initialItems = [], set
   for (const item of items) { item.node ??= node(item.id); item.record.visualTarget ??= node(`${item.id}-target`); }
   const targets = new Set(items.map((item) => item.record.visualTarget));
   const document = {
-    body: {},
+    body: { append() {} },
     querySelectorAll: (selector) => selector === "article" ? items.map((item) => item.node) : selector === "[data-nf-reason]" ? [...targets].filter((target) => target.dataset.nfReason) : selector === "[data-nf-id]" ? [...targets].filter((target) => target.dataset.nfId) : [],
     createElement: (tag) => node(tag),
   };
@@ -160,11 +198,11 @@ const makeContentHarness = ({ withObserver = true, items: initialItems = [], set
     trigger(intersecting) { this.callback(intersecting.map((target) => ({ target, isIntersecting: true }))); }
   }
   const context = {
-    URL, location: { href: "https://example.com/" }, document, MutationObserver: MutationObserverFake, ...(withObserver ? { IntersectionObserver: IntersectionObserverFake } : {}), setTimeout: (callback) => { callback(); return 1; }, clearTimeout: () => {},
+    URL, ...(viewport ? { innerHeight: 800, innerWidth: 1200 } : {}), location: { href: "https://example.com/" }, document, MutationObserver: MutationObserverFake, ...(withObserver ? { IntersectionObserver: IntersectionObserverFake } : {}), setTimeout: (callback) => { callback(); return 1; }, clearTimeout: () => {},
     nfPickAdapter: () => ({ itemSelector: "article", extract: (element) => items.find((item) => item.node === element)?.record || null }),
     chrome: {
       storage: { sync: { get: async (defaults) => ({ ...defaults, ...settingsValue }), set: async (value) => { settingsValue = { ...settingsValue, ...value }; await context.changed(Object.fromEntries(Object.keys(value).map((key) => [key, {}])), "sync"); } }, onChanged: { addListener: (callback) => { context.changed = callback; } } },
-      runtime: { getURL: (path) => path, onMessage: { addListener: (callback) => { messageCallback = callback; } }, sendMessage: async (message) => { calls.push(message); return { ok: true, results: Object.fromEntries(message.items.map((item) => [item.id, { kind: { ad_pr: 1 }, topic: message.topics.length ? { off_topic: 1 } : null, excludedTopic: message.excludedTopics.length ? { on_topic: 1 } : null, source: "model" }])) }; } },
+      runtime: { getURL: (path) => path, onMessage: { addListener: (callback) => { messageCallback = callback; } }, sendMessage: async (message) => { if (message.badge) return { ok: true }; calls.push(message); if (failFirstBatch && calls.length === 1) return { ok: false, error: "batch failed" }; return { ok: true, results: Object.fromEntries(message.items.map((item) => [item.id, { kind: { ad_pr: 1 }, topic: message.topics.length ? { off_topic: 1 } : null, excludedTopic: message.excludedTopics.length ? { on_topic: 1 } : null, source: "model" }])) }; } },
     },
   };
   vm.runInNewContext(contentSource, context);
@@ -197,6 +235,19 @@ function nodeForTest(name) { return { name, dataset: {}, classList: { add() {}, 
   assert.equal(harness.observer().targets.has(target), false, "classified targets leave the observer");
 }
 console.log("content visibility deferral tests passed");
+
+{
+  const visible = contentItem("visible-without-observer-event");
+  visible.record.visualTarget.getBoundingClientRect = () => ({ top: 100, bottom: 200, left: 0, right: 500, width: 500, height: 100 });
+  const offscreen = contentItem("still-offscreen");
+  offscreen.record.visualTarget.getBoundingClientRect = () => ({ top: 3000, bottom: 3100, left: 0, right: 500, width: 500, height: 100 });
+  const harness = makeContentHarness({ items: [visible, offscreen], viewport: true });
+  await harness.settle();
+  assert.equal(harness.calls.length, 1, "visible articles are queued without an observer callback");
+  assert.equal(harness.calls[0].items[0].id, "visible-without-observer-event");
+  assert.ok(harness.observer().targets.has(offscreen.record.visualTarget), "distant articles remain deferred");
+}
+console.log("content visible fallback tests passed");
 
 {
   const first = contentItem("duplicate");
@@ -319,6 +370,17 @@ console.log("content filter reactivation tests passed");
   assert.equal(harness.calls[1].items.length, 1);
 }
 console.log("content batching tests passed");
+
+{
+  const items = Array.from({ length: 31 }, (_, index) => contentItem(`failed-batch-${index}`));
+  const harness = makeContentHarness({ items, failFirstBatch: true });
+  await harness.settle();
+  harness.observer().trigger([...harness.targets]);
+  await harness.settle();
+  assert.equal(harness.calls.length, 2, "a failed batch must not strand later queued articles");
+  assert.equal(items[30].record.visualTarget.dataset.nfReason, "ad");
+}
+console.log("content batch failure recovery tests passed");
 
 {
   const eager = contentItem("eager");

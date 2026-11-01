@@ -1,5 +1,6 @@
 const DEFAULTS = {
   debug: false,
+  debugStyle: "lens",
   enabled: true,
   hideAd: true,
   hideProduct: false,
@@ -17,6 +18,8 @@ const parseTopics = (text) => text.split(/[,\n]/).map((t) => t.trim()).filter(Bo
 async function load() {
   const s = { ...DEFAULTS, ...(await chrome.storage.sync.get(DEFAULTS)) };
   for (const key of ["enabled", "hideAd", "hideProduct", "hideOffTopic", "hideExcludedTopic", "debug"]) $(key).checked = s[key];
+  document.querySelector(`input[name="debugStyle"][value="${s.debugStyle === "strip" ? "strip" : "lens"}"]`).checked = true;
+  $("debugStyleOptions").disabled = !s.debug;
   $("topics").value = s.topics.join(", ");
   $("excludedTopics").value = s.excludedTopics.join(", ");
   document.querySelector(`input[name="mode"][value="${s.mode}"]`).checked = true;
@@ -32,6 +35,7 @@ async function load() {
 const save = () =>
   chrome.storage.sync.set({
     debug: $("debug").checked,
+    debugStyle: document.querySelector('input[name="debugStyle"]:checked').value,
     enabled: $("enabled").checked,
     hideAd: $("hideAd").checked,
     hideProduct: $("hideProduct").checked,
@@ -52,7 +56,10 @@ async function refreshStatus() {
 
   const lines = [];
   lines.push($("apiKey").value ? "Jev 설정을 확인하려면 연결 테스트를 눌러 주세요." : "Jev API 키를 설정해 주세요.");
-  if (stats) lines.push(`${stats.adapter === "common" ? "공통 추출기" : "이 페이지"}: ${stats.total}건 중 ${stats.hidden}건 가림${stats.error ? ` / 오류: ${stats.error}` : ""}`);
+  if (stats) {
+    lines.push(`${stats.adapter === "common" ? "공통 추출기" : "이 페이지"}: 기사 ${stats.total}건 감지 · ${stats.hidden}건 가림${stats.error ? ` / 오류: ${stats.error}` : ""}`);
+    if (stats.skipped?.multiple_articles) lines.push(`여러 기사 링크가 섞인 영역 ${stats.skipped.multiple_articles}건 제외`);
+  }
   else lines.push("이 페이지는 지원하지 않거나 아직 로드 중입니다.");
   status.textContent = lines.join("\n");
   status.style.whiteSpace = "pre-line";
@@ -61,31 +68,48 @@ async function refreshStatus() {
 
 for (const id of ["enabled", "hideAd", "hideProduct", "hideOffTopic", "hideExcludedTopic", "debug"]) {
   $(id).addEventListener("change", () => {
+    $("debugStyleOptions").disabled = !$("debug").checked;
     $("topics").disabled = !$("hideOffTopic").checked;
     $("excludedTopics").disabled = !$("hideExcludedTopic").checked;
     save();
   });
 }
+for (const r of document.querySelectorAll('input[name="debugStyle"]')) r.addEventListener("change", save);
 $("topics").addEventListener("change", save);
 $("excludedTopics").addEventListener("change", save);
+async function saveConnection() {
+  const endpoint = new URL($("endpoint").value.trim());
+  if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) throw new Error("HTTPS API 주소를 입력해 주세요.");
+  if (!$("apiKey").value.trim()) throw new Error("Jev API 키를 입력해 주세요.");
+  if (!$("model").value.trim()) throw new Error("Jev 모델을 입력해 주세요.");
+  const allowed = await chrome.permissions.request({ origins: [`${endpoint.origin}/*`] });
+  if (!allowed) throw new Error("API 주소 접근 권한이 필요합니다.");
+  await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  await chrome.storage.local.set({ apiKey: $("apiKey").value.trim(), endpoint: endpoint.href, model: $("model").value.trim() });
+  await chrome.storage.sync.set({ connectionUpdatedAt: Date.now() });
+}
+
 $("saveConnection").addEventListener("click", async () => {
   try {
-    const endpoint = new URL($("endpoint").value.trim());
-    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) throw new Error("HTTPS API 주소를 입력해 주세요.");
-    const allowed = await chrome.permissions.request({ origins: [`${endpoint.origin}/*`] });
-    if (!allowed) throw new Error("API 주소 접근 권한이 필요합니다.");
-    await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
-    await chrome.storage.local.set({ apiKey: $("apiKey").value.trim(), endpoint: endpoint.href, model: $("model").value.trim() });
-    await chrome.storage.sync.set({ connectionUpdatedAt: Date.now() });
+    await saveConnection();
     $("status").textContent = "연결 설정을 저장했습니다.";
   } catch (error) {
     $("status").textContent = error.message;
   }
 });
 $("testConnection").addEventListener("click", async () => {
-  $("status").textContent = "저장한 설정으로 Jev에 연결하는 중...";
-  const result = await chrome.runtime.sendMessage({ type: "health" });
-  $("status").textContent = result.ok ? "Jev 연결을 확인했습니다." : result.error;
+  const button = $("testConnection");
+  button.disabled = true;
+  $("status").textContent = "입력한 설정을 저장하고 Jev에 연결하는 중...";
+  try {
+    await saveConnection();
+    const result = await chrome.runtime.sendMessage({ type: "health" });
+    $("status").textContent = result?.ok ? "Jev 연결을 확인했습니다." : (result?.error || "Jev 연결 테스트 응답이 올바르지 않습니다.");
+  } catch (error) {
+    $("status").textContent = error.message || "Jev 연결 테스트를 시작하지 못했습니다. 확장 프로그램을 다시 로드해 주세요.";
+  } finally {
+    button.disabled = false;
+  }
 });
 $("threshold").addEventListener("input", () => {
   $("thresholdValue").textContent = Number($("threshold").value).toFixed(2);
@@ -121,5 +145,16 @@ $("enableSite").addEventListener("click", async () => {
     $("status").textContent = "이 사이트에 적용했어요. 기사별 판정은 디버깅 모드에서 확인해 주세요.";
   } catch (error) {
     $("status").textContent = error.message;
+  }
+});
+
+$("pickArticle").addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error("현재 페이지를 찾을 수 없습니다.");
+    await chrome.tabs.sendMessage(tab.id, { type: "pickArticle" });
+    window.close();
+  } catch {
+    $("status").textContent = "먼저 이 사이트에서 사용을 눌러 주세요.";
   }
 });

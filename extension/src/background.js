@@ -124,11 +124,11 @@ async function classify({ items, topics = [], excludedTopics = [] }) {
 
 async function health() {
   const connection = await getConnection();
-  await callJev(connection, {
-    model: connection.model,
-    state: "NotForMe connection test",
-    questions: { connection: { type: "choice", criteria: { ok: "Connection test" } } },
-  });
+  await callJev(connection, buildRequest([{
+    id: "connection",
+    title: "NotForMe connection test",
+    summary: "Verify that the configured Jev API accepts a classification request.",
+  }], [], connection.model, []));
   return { ok: true };
 }
 
@@ -141,7 +141,22 @@ const publicError = (error) => {
 
 const respond = (promise, sendResponse) => promise.then(sendResponse).catch((error) => sendResponse({ ok: false, error: publicError(error) }));
 
+function updateBadge(tabId, hidden) {
+  const count = Number.isInteger(hidden) && hidden > 0 ? hidden : 0;
+  const text = count ? (count > 99 ? "99+" : String(count)) : "";
+  const title = count ? `NotForMe: ${count}건 가림` : "NotForMe";
+  return Promise.all([
+    chrome.action.setBadgeText({ tabId, text }),
+    chrome.action.setTitle({ tabId, title }),
+    ...(count ? [chrome.action.setBadgeBackgroundColor({ tabId, color: "#c83f32" })] : []),
+  ]).then(() => ({ ok: true }));
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "badge" && sender.tab?.id !== undefined) {
+    respond(updateBadge(sender.tab.id, msg.hidden), sendResponse);
+    return true;
+  }
   if (msg.type === "classify") {
     respond(classify(msg), sendResponse);
     return true;
